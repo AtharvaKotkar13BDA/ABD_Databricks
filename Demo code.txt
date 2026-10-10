@@ -1,0 +1,200 @@
+
+1. Create a markdown
+
+%md
+
+# University Placement Analysis
+
+This notebook demonstrates:
+
+- CSV ingestion
+- PySpark transformations
+- Delta Lake tables
+- SQL analytics
+- Data visualization
+
+2. Add python collection
+
+programs = [
+    "MTech CSE",
+    "MTech BDA",
+    "MTech Cloud Computing",
+    "MTech Cyber Security"
+]
+
+for program in programs:
+    print(program)
+
+
+3. Create a schema "placement_demo" under workspace catalog
+
+%sql
+
+CREATE SCHEMA IF NOT EXISTS workspace.placement_demo
+COMMENT 'Schema used for the Databricks placement demonstration';
+
+4. Create a volume
+
+%sql
+
+CREATE VOLUME IF NOT EXISTS workspace.placement_demo.source_files
+COMMENT 'Volume for CSV source files';
+
+5. Upload the csv file to volume
+
+6. Read the CSV data using pyspark
+
+7. Count the records
+print("Number of records:", placements_df.count())
+
+8. Select particular columns
+display(
+    placements_df.select(
+        "student_id",
+        "student_name",
+        "program",
+        "company",
+        "annual_package"
+    )
+)
+
+9. Filter selected students
+
+from pyspark.sql.functions import col
+
+selected_df = placements_df.filter(
+    col("placement_status") == "Selected"
+)
+
+display(selected_df)
+
+
+10
+# Handle NULL values
+from pyspark.sql.functions import coalesce, lit
+
+cleaned_df = (
+    placements_df
+    .withColumn(
+        "company",
+        coalesce(col("company"), lit("Not Applicable"))
+    )
+    .withColumn(
+        "job_role",
+        coalesce(col("job_role"), lit("Not Applicable"))
+    )
+)
+
+display(cleaned_df)
+
+11
+#Convert the date column
+from pyspark.sql.functions import to_date
+
+cleaned_df = cleaned_df.withColumn(
+    "offer_date",
+    to_date(col("offer_date"), "yyyy-MM-dd")
+)
+
+cleaned_df.printSchema()
+
+12
+# Create a package category
+from pyspark.sql.functions import when
+
+enriched_df = cleaned_df.withColumn(
+    "package_category",
+    when(col("annual_package") >= 1500000, "Very High")
+    .when(col("annual_package") >= 1000000, "High")
+    .when(col("annual_package") >= 700000, "Medium")
+    .when(col("annual_package") > 0, "Entry Level")
+    .otherwise("No Offer")
+)
+
+display(enriched_df)
+
+Create and work with a Delta table
+13
+# Save the DataFrame as a Delta table
+target_table = "workspace.placement_demo.placement_results"
+
+(
+    enriched_df.write
+               .format("delta")
+               .mode("overwrite")
+               .option("overwriteSchema", "true")
+               .saveAsTable(target_table)
+)
+
+14
+# Query the Delta table
+%sql
+
+SELECT *
+FROM workspace.placement_demo.placement_results;
+
+15
+Batch-wise statistics
+%sql
+
+SELECT
+    batch_year,
+    COUNT(*) AS total_students,
+    SUM(
+        CASE
+            WHEN placement_status = 'Selected' THEN 1
+            ELSE 0
+        END
+    ) AS selected_students,
+    ROUND(AVG(
+        CASE
+            WHEN annual_package > 0 THEN annual_package
+        END
+    ), 2) AS average_package
+FROM workspace.placement_demo.placement_results
+GROUP BY batch_year
+ORDER BY batch_year;
+
+16
+Create a reusable SQL view
+%sql
+
+CREATE OR REPLACE VIEW
+workspace.placement_demo.program_placement_summary
+AS
+SELECT
+    program,
+    batch_year,
+    COUNT(*) AS total_students,
+    SUM(
+        CASE
+            WHEN placement_status = 'Selected' THEN 1
+            ELSE 0
+        END
+    ) AS selected_students,
+    ROUND(AVG(
+        CASE
+            WHEN annual_package > 0 THEN annual_package
+        END
+    ), 2) AS average_package,
+    MAX(annual_package) AS highest_package
+FROM workspace.placement_demo.placement_results
+GROUP BY program, batch_year;
+
+%sql
+
+SELECT *
+FROM workspace.placement_demo.program_placement_summary;
+
+
+Create a chart
+
+%sql
+
+SELECT
+    program,
+    ROUND(AVG(annual_package), 2) AS average_package
+FROM workspace.placement_demo.placement_results
+WHERE placement_status = 'Selected'
+GROUP BY program
+ORDER BY average_package DESC;
